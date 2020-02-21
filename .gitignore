@@ -2,3 +2,4 @@
 /cache
 /executed_experiments
 __pycache__
+/results/state_counts.pdf
