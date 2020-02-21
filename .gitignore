@@ -1,3 +1,5 @@
 /.idea
 /cache
 /executed_experiments
+/results
+__pycache__
