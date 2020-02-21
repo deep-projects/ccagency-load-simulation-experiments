@@ -10,8 +10,9 @@ from execute_experiments import AuthenticationInfo, EXECUTED_EXPERIMENTS_DIR, ge
 
 CACHE_DIRECTORY = 'cache'
 RESULTS_PATH = 'results'
-PROCESSING_DURATION_CSV_PATH = os.path.join(RESULTS_PATH, 'processing_durations.csv')
 BAR_WIDTH = 70
+PROCESSING_DURATION_CSV_PATH = os.path.join(RESULTS_PATH, 'processing_durations.csv')
+SUCCESS_RATE_CSV_PATH = os.path.join(RESULTS_PATH, 'success_rate.csv')
 
 PROCESSING_DURATION_LABEL = 'processing duration in seconds'
 SCHEDULING_DURATION_LABEL = 'scheduling duration in seconds'
@@ -213,6 +214,23 @@ def detailed_results_to_data_frame(detailed_results):
     return pd.DataFrame(data=data)
 
 
+def detailed_results_to_success_rate_data_frame(detailed_results):
+    num_failures = 0
+    num_batches = 0
+
+    for experiment_id, detailed_result in detailed_results.items():
+        num_failures += detailed_result['states'].get('failed', 0)
+        num_batches += len(detailed_result['batchHistories'])
+
+    frame_data = {
+        NUM_FAILURES_LABEL: [num_failures],
+        'numBatches': [num_batches],
+        FAIL_PERCENTAGE_LABEL: [(num_failures / num_batches) * 100]
+    }
+
+    return pd.DataFrame(data=frame_data)
+
+
 def main():
     agency_auth_info = AuthenticationInfo.agency_from_user_input()
 
@@ -227,6 +245,9 @@ def main():
 
     processing_time_df = detailed_results_to_data_frame(detailed_results)
     processing_time_df.to_csv(PROCESSING_DURATION_CSV_PATH)
+
+    success_rate_df = detailed_results_to_success_rate_data_frame(detailed_results)
+    success_rate_df.to_csv(SUCCESS_RATE_CSV_PATH)
 
 
 if __name__ == '__main__':
