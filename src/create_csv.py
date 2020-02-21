@@ -10,14 +10,18 @@ from execute_experiments import AuthenticationInfo, EXECUTED_EXPERIMENTS_DIR, ge
 
 CACHE_DIRECTORY = 'cache'
 RESULTS_PATH = 'results'
+RESULT_CSV_PATH = os.path.join(RESULTS_PATH, 'processing_timestamps.csv')
 BAR_WIDTH = 70
 PROCESSING_DURATION_CSV_PATH = os.path.join(RESULTS_PATH, 'processing_durations.csv')
 SUCCESS_RATE_CSV_PATH = os.path.join(RESULTS_PATH, 'success_rate.csv')
 
 PROCESSING_DURATION_LABEL = 'processing duration in seconds'
 SCHEDULING_DURATION_LABEL = 'scheduling duration in seconds'
-NUM_FAILURES_LABEL = 'number of failures'
-FAIL_PERCENTAGE_LABEL = 'failures in %'
+TIME_REGISTERED_LABEL = 'timestamp_registered'
+TIME_SCHEDULED_LABEL = 'timestamp_scheduled'
+TIME_PROCESSING_LABEL = 'timestamp_processing'
+TIME_SUCCEEDED_LABEL = 'timestamp_succeeded'
+EXPERIMENT_ID_LABEL = 'experiment_id'
 
 
 def get_experiment_ids_from_executed_experiments():
@@ -182,11 +186,55 @@ class BatchToStateDuration:
             return 0
 
 
+def get_state_timestamp_from_history(history, state):
+    history_entries = list(filter(lambda history_entry: history_entry['state'] == state, history['history']))
+    if len(history_entries) != 1:
+        raise ValueError('Found state {} {} times'.format(state, len(history_entries)))
+    return history_entries[0]['time']
+
+
+def get_state_timestamps(batch_list, state):
+    return list(
+        map(lambda batch_history: get_state_timestamp_from_history(batch_history, state), batch_list['batchHistories'])
+    )
+
+
 def get_state_durations(batch_list, state):
     return list(map(BatchToStateDuration(state), batch_list))
 
 
 def detailed_results_to_data_frame(detailed_results):
+    data = {
+        EXPERIMENT_ID_LABEL: [],
+        TIME_REGISTERED_LABEL: [],
+        TIME_SCHEDULED_LABEL: [],
+        TIME_PROCESSING_LABEL: [],
+        TIME_SUCCEEDED_LABEL: [],
+    }
+
+    for experiment_id, detailed_result in detailed_results.items():
+        num_batches = len(detailed_result['batchHistories'])
+
+        registered_timestamps = get_state_timestamps(detailed_result, 'registered')
+        scheduled_timestamps = get_state_timestamps(detailed_result, 'scheduled')
+        processing_timestamps = get_state_timestamps(detailed_result, 'processing')
+        succeeded_timestamps = get_state_timestamps(detailed_result, 'succeeded')
+
+        assert(len(registered_timestamps) == num_batches)
+        assert(len(scheduled_timestamps) == num_batches)
+        assert(len(processing_timestamps) == num_batches)
+        assert(len(succeeded_timestamps) == num_batches)
+
+        data[EXPERIMENT_ID_LABEL].extend([experiment_id] * num_batches)
+        data[TIME_REGISTERED_LABEL].extend(registered_timestamps)
+        data[TIME_SCHEDULED_LABEL].extend(scheduled_timestamps)
+        data[TIME_PROCESSING_LABEL].extend(processing_timestamps)
+        data[TIME_SUCCEEDED_LABEL].extend(succeeded_timestamps)
+
+    return pd.DataFrame(data=data)
+
+
+def detailed_results_to_processing_time_data_frame(detailed_results):
     data = {
         'experimentId': [],
         SCHEDULING_DURATION_LABEL: [],
@@ -214,23 +262,6 @@ def detailed_results_to_data_frame(detailed_results):
     return pd.DataFrame(data=data)
 
 
-def detailed_results_to_success_rate_data_frame(detailed_results):
-    num_failures = 0
-    num_batches = 0
-
-    for experiment_id, detailed_result in detailed_results.items():
-        num_failures += detailed_result['states'].get('failed', 0)
-        num_batches += len(detailed_result['batchHistories'])
-
-    frame_data = {
-        NUM_FAILURES_LABEL: [num_failures],
-        'numBatches': [num_batches],
-        FAIL_PERCENTAGE_LABEL: [(num_failures / num_batches) * 100]
-    }
-
-    return pd.DataFrame(data=frame_data)
-
-
 def main():
     agency_auth_info = AuthenticationInfo.agency_from_user_input()
 
@@ -243,11 +274,9 @@ def main():
             agency_auth_info.hostname, experiment_id, agency_auth_info.username, agency_auth_info.password
         )
 
-    processing_time_df = detailed_results_to_data_frame(detailed_results)
-    processing_time_df.to_csv(PROCESSING_DURATION_CSV_PATH)
+    times_df = detailed_results_to_data_frame(detailed_results)
 
-    success_rate_df = detailed_results_to_success_rate_data_frame(detailed_results)
-    success_rate_df.to_csv(SUCCESS_RATE_CSV_PATH)
+    times_df.to_csv(RESULT_CSV_PATH)
 
 
 if __name__ == '__main__':
