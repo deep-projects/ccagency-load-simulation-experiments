@@ -262,6 +262,15 @@ def detailed_results_to_processing_time_data_frame(detailed_results):
     return pd.DataFrame(data=data)
 
 
+def normalize_times_df(times_df):
+    start_time = times_df.min()[TIME_REGISTERED_LABEL]
+
+    times_df[TIME_REGISTERED_LABEL] = times_df[TIME_REGISTERED_LABEL] - start_time
+    times_df[TIME_SCHEDULED_LABEL] = times_df[TIME_SCHEDULED_LABEL] - start_time
+    times_df[TIME_PROCESSING_LABEL] = times_df[TIME_PROCESSING_LABEL] - start_time
+    times_df[TIME_SUCCEEDED_LABEL] = times_df[TIME_SUCCEEDED_LABEL] - start_time
+
+
 def main():
     agency_auth_info = AuthenticationInfo.agency_from_user_input()
 
@@ -275,6 +284,8 @@ def main():
         )
 
     times_df = detailed_results_to_data_frame(detailed_results)
+
+    normalize_times_df(times_df)
 
     times_df.to_csv(RESULT_CSV_PATH)
 
