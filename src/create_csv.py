@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 from multiprocessing.pool import ThreadPool
 
-from execute_experiments import AuthenticationInfo, EXECUTED_EXPERIMENTS_DIR, get_state_dict
+from execute_experiment import AuthenticationInfo, EXECUTED_EXPERIMENTS_DIR, get_state_dict
 
 CACHE_DIRECTORY = 'cache'
 RESULTS_PATH = 'results'
@@ -51,7 +51,7 @@ def get_detailed_result_with_cache(agency, experiment_id, username, pw):
 
 
 def get_batches(agency, username, pw, experiment_id):
-    url = '{}?experimentId={}'.format(os.path.join(agency, 'batches'), experiment_id)
+    url = '{}/{}?experimentId={}'.format(agency, 'batches', experiment_id)
     resp = requests.get(url, auth=(username, pw))
 
     batches = list(filter(lambda b: b['experimentId'] == experiment_id, resp.json()))
@@ -71,7 +71,7 @@ class BatchFetcher:
 
     def __call__(self, batch):
         result = requests.get(
-            os.path.join(self.agency, 'batches', batch['_id']),
+            '{}/{}/{}'.format(self.agency, 'batches', batch['_id']),
             auth=(self.username, self.password)
         ).json()
         with self.lock:
