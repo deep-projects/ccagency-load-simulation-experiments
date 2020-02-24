@@ -9,7 +9,7 @@ from create_csv import RESULT_CSV_PATH, TIME_REGISTERED_LABEL, TIME_SUCCEEDED_LA
     TIME_PROCESSING_LABEL, RESULTS_PATH
 
 NUM_BATCHES_TIME_STEP = 4
-NUM_BINS_NEW_BATCHES = 10
+NUM_BINS_NEW_BATCHES = 15
 
 TIME_LABEL = 'time'
 NUM_SCHEDULED_LABEL = 'num batches scheduled'
@@ -98,7 +98,8 @@ def create_state_change_df(data_frame):
     end_time = data_frame.max()[TIME_SUCCEEDED_LABEL]
 
     # round up end_time to a number divisible by NUM_BINS_NEW_BATCHES
-    end_time = (int(end_time) // NUM_BINS_NEW_BATCHES + 1) * NUM_BINS_NEW_BATCHES
+    # end_time = (int(end_time) // NUM_BINS_NEW_BATCHES + 1) * NUM_BINS_NEW_BATCHES
+    end_time = (int(end_time) // 60 + 1) * 60
 
     data = {
         TIME_LABEL: [],
@@ -107,12 +108,13 @@ def create_state_change_df(data_frame):
         NUM_NEW_SUCCEEDED_LABEL: []
     }
 
-    times_linspace = np.linspace(start_time, end_time, NUM_BINS_NEW_BATCHES + 1)
+    # times_linspace = np.linspace(start_time, end_time, NUM_BINS_NEW_BATCHES + 1).astype(int)
+    times_linspace = np.arange(start_time, end_time+1, 60).astype(int)
 
     bin_start_time = times_linspace[0]
     end_times = times_linspace[1:]
     for bin_end_time in end_times:
-        data[TIME_LABEL].append(bin_end_time)
+        data[TIME_LABEL].append(int(bin_end_time) // 60)
 
         new_scheduled_batch_count = count_new_batches_in_state(
             data_frame, bin_start_time, bin_end_time, TIME_SCHEDULED_LABEL
