@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 from create_csv import RESULT_CSV_PATH, TIME_REGISTERED_LABEL, TIME_SUCCEEDED_LABEL, TIME_SCHEDULED_LABEL, \
     TIME_PROCESSING_LABEL, RESULTS_PATH
 
-TIME_STEP = 4
+NUM_BATCHES_TIME_STEP = 4
+NUM_BINS_NEW_BATCHES = 10
+
 TIME_LABEL = 'time'
 NUM_SCHEDULED_LABEL = 'num batches scheduled'
 NUM_REGISTERED_BATCHES_LABEL = 'number registered batches'
@@ -16,6 +18,9 @@ NUM_SCHEDULED_BATCHES_LABEL = 'number scheduled batches'
 NUM_PROCESSING_BATCHES_LABEL = 'number processing batches'
 NUM_SUCCEEDED_BATCHES_LABEL = 'number succeeded batches'
 
+NUM_NEW_SCHEDULED_LABEL = 'num to scheduled'
+NUM_NEW_PROCESSING_LABEL = 'num to processing'
+NUM_NEW_SUCCEEDED_LABEL = 'num to succeeded'
 
 NEXT_STATE_LABEL = {
     TIME_REGISTERED_LABEL: TIME_SCHEDULED_LABEL,
@@ -25,17 +30,42 @@ NEXT_STATE_LABEL = {
 }
 
 
-def count_batches_in_state(data_frame, time, state_label):
+def get_batches_not_in_state(data_frame, time, state_label):
+    if state_label is TIME_SUCCEEDED_LABEL:
+        return data_frame[(data_frame[state_label] > time)]
+
     next_state_label = NEXT_STATE_LABEL[state_label]
-    if next_state_label is None:
-        return len(data_frame[(data_frame[state_label] <= time)])
 
-    result = len(data_frame[(data_frame[state_label] <= time) & (data_frame[next_state_label] > time)])
+    return data_frame[not ((data_frame[state_label] <= time) & (data_frame[next_state_label] > time))]
 
-    return result
+
+def get_batches_in_state(data_frame, time, state_label):
+    if state_label is TIME_SUCCEEDED_LABEL:
+        return data_frame[(data_frame[state_label] <= time)]
+
+    next_state_label = NEXT_STATE_LABEL[state_label]
+
+    return data_frame[(data_frame[state_label] <= time) & (data_frame[next_state_label] > time)]
+
+
+def count_batches_in_state(data_frame, time, state_label):
+    return len(get_batches_in_state(data_frame, time, state_label))
+
+
+def count_new_batches_in_state(data_frame, start_time, end_time, state_label):
+    new_batches_in_state = data_frame[(data_frame[state_label] >= start_time) & (data_frame[state_label] < end_time)]
+    return len(new_batches_in_state)
 
 
 def create_state_count_data_frame(data_frame):
+    """
+    Creates a pandas Dataframe that contains the number of batches for the states 'registered', 'scheduled',
+    'processing' and 'succeeded'. Each value is present for multiple timestamps.
+
+    :param data_frame: The dataframe to get data from
+    :type data_frame: pd.DataFrame
+    :return:
+    """
     start_time = data_frame.min()[TIME_REGISTERED_LABEL]
     end_time = data_frame.max()[TIME_SUCCEEDED_LABEL]
 
@@ -47,7 +77,7 @@ def create_state_count_data_frame(data_frame):
         NUM_SUCCEEDED_BATCHES_LABEL: []
     }
 
-    for time in np.arange(start_time, end_time, TIME_STEP):
+    for time in np.arange(start_time, end_time, NUM_BATCHES_TIME_STEP):
         data[TIME_LABEL].append(time)
 
         registered_batch_count = count_batches_in_state(data_frame, time, TIME_REGISTERED_LABEL)
@@ -63,11 +93,53 @@ def create_state_count_data_frame(data_frame):
     return pd.DataFrame(data=data)
 
 
+def create_state_change_df(data_frame):
+    start_time = data_frame.min()[TIME_REGISTERED_LABEL]
+    end_time = data_frame.max()[TIME_SUCCEEDED_LABEL]
+
+    # round up end_time to a number divisible by NUM_BINS_NEW_BATCHES
+    end_time = (int(end_time) // NUM_BINS_NEW_BATCHES + 1) * NUM_BINS_NEW_BATCHES
+
+    data = {
+        TIME_LABEL: [],
+        NUM_NEW_SCHEDULED_LABEL: [],
+        NUM_NEW_PROCESSING_LABEL: [],
+        NUM_NEW_SUCCEEDED_LABEL: []
+    }
+
+    times_linspace = np.linspace(start_time, end_time, NUM_BINS_NEW_BATCHES + 1)
+
+    bin_start_time = times_linspace[0]
+    end_times = times_linspace[1:]
+    for bin_end_time in end_times:
+        data[TIME_LABEL].append(bin_end_time)
+
+        new_scheduled_batch_count = count_new_batches_in_state(
+            data_frame, bin_start_time, bin_end_time, TIME_SCHEDULED_LABEL
+        )
+        new_processing_batch_count = count_new_batches_in_state(
+            data_frame, bin_start_time, bin_end_time, TIME_PROCESSING_LABEL
+        )
+        new_succeeded_batch_count = count_new_batches_in_state(
+            data_frame, bin_start_time, bin_end_time, TIME_SUCCEEDED_LABEL
+        )
+
+        data[NUM_NEW_SCHEDULED_LABEL].append(new_scheduled_batch_count)
+        data[NUM_NEW_PROCESSING_LABEL].append(new_processing_batch_count)
+        data[NUM_NEW_SUCCEEDED_LABEL].append(new_succeeded_batch_count)
+
+        bin_start_time = bin_end_time
+
+    return pd.DataFrame(data=data)
+
+
 def main():
     data_frame = pd.read_csv(RESULT_CSV_PATH, index_col=0)
     state_count_df = create_state_count_data_frame(data_frame)
+    new_state_count_df = create_state_change_df(data_frame)
 
     plot_state_count_df(state_count_df)
+    plot_new_state_count(new_state_count_df)
 
 
 def plot_state_count_df(state_count_df):
@@ -83,6 +155,22 @@ def plot_state_count_df(state_count_df):
         ax=ax
     )
     plot_path = os.path.join(RESULTS_PATH, 'state_counts.pdf')
+    fig.savefig(plot_path, bibox_inches='tight')
+
+
+def plot_new_state_count(data_frame):
+    fig, ax = plt.subplots(1, 1)
+
+    df = data_frame.melt(TIME_LABEL, var_name='state', value_name='number of batches')
+
+    sns.barplot(
+        x=TIME_LABEL,
+        y='number of batches',
+        hue='state',
+        data=df,
+        ax=ax
+    )
+    plot_path = os.path.join(RESULTS_PATH, 'state_changes.pdf')
     fig.savefig(plot_path, bibox_inches='tight')
 
 
