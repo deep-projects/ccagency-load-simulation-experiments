@@ -10,17 +10,19 @@ from create_csv import RESULT_CSV_PATH, TIME_REGISTERED_LABEL, TIME_SUCCEEDED_LA
 
 NUM_BATCHES_TIME_STEP = 4
 NUM_BINS_NEW_BATCHES = 15
+NUM_BATCHES_LABEL = 'number of batch state changes'
+STATE_LABEL = 'state changes'
 
-TIME_LABEL = 'time'
+TIME_LABEL = 'one minute time bins'
 NUM_SCHEDULED_LABEL = 'num batches scheduled'
 NUM_REGISTERED_BATCHES_LABEL = 'number registered batches'
 NUM_SCHEDULED_BATCHES_LABEL = 'number scheduled batches'
 NUM_PROCESSING_BATCHES_LABEL = 'number processing batches'
 NUM_SUCCEEDED_BATCHES_LABEL = 'number succeeded batches'
 
-NUM_NEW_SCHEDULED_LABEL = 'num to scheduled'
-NUM_NEW_PROCESSING_LABEL = 'num to processing'
-NUM_NEW_SUCCEEDED_LABEL = 'num to succeeded'
+NUM_NEW_SCHEDULED_LABEL = 'from registered to scheduled'
+NUM_NEW_PROCESSING_LABEL = 'from scheduled to processing'
+NUM_NEW_SUCCEEDED_LABEL = 'from processing to succeeded'
 
 NEXT_STATE_LABEL = {
     TIME_REGISTERED_LABEL: TIME_SCHEDULED_LABEL,
@@ -28,15 +30,6 @@ NEXT_STATE_LABEL = {
     TIME_PROCESSING_LABEL: TIME_SUCCEEDED_LABEL,
     TIME_SUCCEEDED_LABEL: None
 }
-
-
-def get_batches_not_in_state(data_frame, time, state_label):
-    if state_label is TIME_SUCCEEDED_LABEL:
-        return data_frame[(data_frame[state_label] > time)]
-
-    next_state_label = NEXT_STATE_LABEL[state_label]
-
-    return data_frame[not ((data_frame[state_label] <= time) & (data_frame[next_state_label] > time))]
 
 
 def get_batches_in_state(data_frame, time, state_label):
@@ -135,8 +128,28 @@ def create_state_change_df(data_frame):
     return pd.DataFrame(data=data)
 
 
+def analyse_data_frame(data_frame):
+    start_time = data_frame.min()[TIME_REGISTERED_LABEL]
+    end_time = data_frame.max()[TIME_SUCCEEDED_LABEL]
+
+    max_scheduled_batch_count = 0
+    max_processing_batch_count = 0
+
+    for time in np.arange(start_time, end_time, 0.1):
+        scheduled_batch_count = count_batches_in_state(data_frame, time, TIME_SCHEDULED_LABEL)
+        processing_batch_count = count_batches_in_state(data_frame, time, TIME_PROCESSING_LABEL)
+
+        max_scheduled_batch_count = max(max_scheduled_batch_count, scheduled_batch_count)
+        max_processing_batch_count = max(max_processing_batch_count, processing_batch_count)
+
+    print('max scheduled batch count: {}'.format(max_scheduled_batch_count))
+    print('max processing batch count: {}'.format(max_processing_batch_count))
+    print('total duration: {:.2f} sec'.format(end_time - start_time))
+
+
 def main():
     data_frame = pd.read_csv(RESULT_CSV_PATH, index_col=0)
+    # analyse_data_frame(data_frame)
     state_count_df = create_state_count_data_frame(data_frame)
     new_state_count_df = create_state_change_df(data_frame)
 
@@ -147,12 +160,12 @@ def main():
 def plot_state_count_df(state_count_df):
     fig, ax = plt.subplots(1, 1)
 
-    df = state_count_df.melt(TIME_LABEL, var_name='state', value_name='number of batches')
+    df = state_count_df.melt(TIME_LABEL, var_name=STATE_LABEL, value_name=NUM_BATCHES_LABEL)
 
     sns.lineplot(
         x=TIME_LABEL,
-        y='number of batches',
-        hue='state',
+        y=NUM_BATCHES_LABEL,
+        hue=STATE_LABEL,
         data=df,
         ax=ax
     )
@@ -163,12 +176,12 @@ def plot_state_count_df(state_count_df):
 def plot_new_state_count(data_frame):
     fig, ax = plt.subplots(1, 1)
 
-    df = data_frame.melt(TIME_LABEL, var_name='state', value_name='number of batches')
+    df = data_frame.melt(TIME_LABEL, var_name=STATE_LABEL, value_name=NUM_BATCHES_LABEL)
 
     sns.barplot(
         x=TIME_LABEL,
-        y='number of batches',
-        hue='state',
+        y=NUM_BATCHES_LABEL,
+        hue=STATE_LABEL,
         data=df,
         ax=ax
     )
